@@ -1,6 +1,6 @@
-FROM phusion/baseimage:0.9.19
+FROM phusion/baseimage:latest
 
-MAINTAINER Ahumaro Mendoza <ahumaro@ahumaro.com>
+MAINTAINER Lukas Meyer <lukas@ninux.ch
 
 CMD ["/sbin/my_init"]
 
@@ -11,20 +11,33 @@ ENV DEBIAN_FRONTEND noninteractive
 RUN apt-get update -q
 RUN apt-get upgrade -y -q
 RUN apt-get install -y -q php php-cli php-fpm php-gd php-curl php-apcu php-xml php-mbstring php-zip ca-certificates nginx git-core
+RUN apt-get remove --purge -y -q openssh-server
+RUN apt-get autoremove --purge -y -q
 RUN apt-get clean -q && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
 #Get Grav
-RUN rm -fR /usr/share/nginx/html/
+RUN rm -fR /usr/share/nginx/html/*
 RUN git clone https://github.com/getgrav/grav.git /usr/share/nginx/html/
 
 #Install Grav
 WORKDIR /usr/share/nginx/html/
 RUN bin/composer.phar self-update
 RUN bin/grav install
+RUN bin/gpm install admin
+RUN echo "password: 'admin1234'\n\
+email: 'admin@example.com'\n\
+fullname: 'Example Admin'\n\
+title: 'Site Administrator'\n\
+access:\n\ 
+  admin:\n\ 
+    login: true\n\
+    super: true" >> user/accounts/admin.yaml
 RUN chown -R www-data:www-data *
 RUN find . -type f | xargs chmod 664
 RUN find . -type d | xargs chmod 775
 RUN find . -type d | xargs chmod +s
+RUN cp -a user /usr/src/grav-skeleton
+COPY 01_grav_copy_skeleton.sh /etc/my_init.d/
 RUN umask 0002
 
 #Configure Nginx - enable gzip
@@ -70,16 +83,8 @@ RUN chmod +x /etc/service/nginx/run
 RUN echo '#!/bin/bash \n\
     exec /usr/sbin/nginx -g "daemon off;"' >>  /etc/service/nginx/run
 
-#Setup SSH service
-RUN sed -i \
-        -e 's|#PasswordAuthentication no|PasswordAuthentication no|' \
-        -e 's|#UsePAM yes|UsePAM no|' \
-    /etc/ssh/sshd_config
-RUN rm -f /etc/service/sshd/down
-RUN /etc/my_init.d/00_regen_ssh_host_keys.sh
-
 #Expose configuration and content volumes
-VOLUME /root/.ssh/ /etc/nginx/ /usr/share/nginx/html/
+VOLUME /etc/nginx/ /usr/share/nginx/html/user/
 
 #Public ports
-EXPOSE 80 22
+EXPOSE 80
